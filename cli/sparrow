@@ -1,15 +1,28 @@
-#!/bin/sh
+#!/bin/bash
 
 # A convenient method to return the actual path even for non symlinks
 # and multi-level symlinks.
-function get_realpath() {
-    local previous="$1"
-    local next=$(readlink "${previous}")
-    while [ -n "${next}" ]; do
-        previous="${next}"
-        next=$(readlink "${previous}")
-    done
-    echo "${previous}"
+get_realpath() {
+    if command -v readlink > /dev/null 2>&1; then
+        # If readlink -f is available, use it to resolve the full path
+        readlink -f "$1"
+    else
+        # Fallback method if readlink -f is not available
+        local target="$1"
+        local physical_path=""
+        if [ -h "$target" ]; then
+            while [ -h "$target" ]; do
+                physical_path=$(dirname "$target")
+                target=$(readlink "$target")
+                cd "$physical_path" || return
+                physical_path=$(pwd -P)
+            done
+        else
+            physical_path=$(cd -P -- "$(dirname "$target")" && pwd -P)
+            target=$(basename "$target")
+        fi
+        echo "$physical_path/$target"
+    fi
 }
 
 PYTHON=""
@@ -20,8 +33,12 @@ elif command -v python2 > /dev/null 2>&1; then
 elif command -v python3 > /dev/null 2>&1; then
     PYTHON="python3"
 else
-    echo "No python interpreter founded."
-    exit -1
+    echo "No Python interpreter found."
+    exit 1
 fi
 
-exec $PYTHON "$(dirname $(get_realpath "$0"))"/cli/sparrow-cli.zip --sparrow-cli-internal "$(dirname $(get_realpath "$0"))" "$@"
+# Store the directory of the script
+SCRIPT_DIR=$(dirname "$(get_realpath "$0")")
+
+# Execute the Python CLI
+exec "$PYTHON" "$SCRIPT_DIR/cli/sparrow-cli.zip" --sparrow-cli-internal "$SCRIPT_DIR" "$@"

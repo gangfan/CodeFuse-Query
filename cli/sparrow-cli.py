@@ -21,7 +21,7 @@ def extractor_choices():
     return extractor_list
 
 
-def parse_args():
+def parse_args_and_run():
     global SPARROW_HOME
     parser = argparse.ArgumentParser(description='sparrow-cli',
                                      formatter_class=argparse.RawTextHelpFormatter)
@@ -31,11 +31,27 @@ def parse_args():
     parser.add_argument('--sparrow-cli-internal', dest='sparrow_home_internal', help=argparse.SUPPRESS)
     parser.add_argument('--verbose', action='store_true', help='Enable verbose mode')
     subparsers = parser.add_subparsers(title='subcommands', dest='subcommand')
-    # 子命令query
+
+    # Add subcommand parsers
+    add_query_subcommand_parser(subparsers)
+    add_database_subcommand_parser(subparsers)
+    add_rebuild_subcommand_parser(subparsers)
+
+    args = parser.parse_args()
+
+    # Handle SPARROW_HOME setting
+    set_sparrow_home(args)
+
+    # Set logging level
+    set_logging_level(args)
+
+    # Execute the selected subcommand
+    execute_subcommand(args)
+
+
+def add_query_subcommand_parser(subparsers):
     subparser_query = subparsers.add_parser('query', help='execute godel script')
-    # 子命令query的子解析器
     sub_subparser_query = subparser_query.add_subparsers(title='query_subcommands', dest='query_subcommands')
-    # query的子命令run
     subparser_query_run = sub_subparser_query.add_parser('run', help='execute godel script')
     subparser_query_run.add_argument("--database", '-d', help='Directory to a godel database to query')
     subparser_query_run.add_argument("--format", '-f', choices=['csv', 'json'], default='json',
@@ -49,12 +65,11 @@ def parse_args():
                                      help='The location of the godel script that needs to execute')
     subparser_query_run.add_argument('--verbose', action='store_true', help='Enable verbose mode')
 
-    # 子命令database
+
+def add_database_subcommand_parser(subparsers):
     subparser_database = subparsers.add_parser('database', help='data extract')
-    # 子命令database子解析器
     sub_subparser_database = subparser_database.add_subparsers(title='database_subcommands',
                                                                dest='database_subcommands')
-    # database的子命令create
     subparser_database_create = sub_subparser_database.add_parser('create', help='data extract')
     subparser_database_create.add_argument("--source-root", '-s', required=True,
                                            help='Select source root,default to current directory')
@@ -77,11 +92,11 @@ def parse_args():
                                                                                   'extraction-config-file，Parameters '
                                                                                   'other than a.b=c will not be '
                                                                                   'accepted')
-    # 子命令rebuild
+
+
+def add_rebuild_subcommand_parser(subparsers):
     subparser_rebuild = subparsers.add_parser('rebuild', help='rebuild tool')
-    # 子命令rebuild的子解析器
     sub_subparser_rebuild = subparser_rebuild.add_subparsers(title='rebuild_subcommands', dest='rebuild_subcommands')
-    # rebuild的子命令lib
     subparser_rebuild_lib = sub_subparser_rebuild.add_parser('lib', help='rebuild lib')
     subparser_rebuild_lib.add_argument('--data-language-type', '-lang', nargs="*", dest="language",
                                        choices=open_lib() + ["all"], required=True, help='data language type, Pass '
@@ -89,28 +104,18 @@ def parse_args():
                                                                                          'by whitespace. e.g. '
                                                                                          '-lang java xml')
     subparser_rebuild_lib.add_argument('--verbose', action='store_true', help='Enable verbose mode')
-    args = parser.parse_args()
 
-    # 如果没有参数输入，直接回车，则显示帮助信息
-    if len(sys.argv) == 1:
-        parser.print_help()
-        logging.warning("please give conf to start sparrow as help, it will not start")
-        return
 
-    # 设置SPARROW_HOME
-    # bazel会将脚本打包进pyz中，SPARROW_HOME需要从SHELL中传入，对用户不可见
+def set_sparrow_home(args):
+    global SPARROW_HOME
     if args.sparrow_home_internal:
         SPARROW_HOME = args.sparrow_home_internal
-    # 用户设置SPARROW_HOME可以覆盖掉脚本设置
     if args.sparrow_home:
         SPARROW_HOME = args.sparrow_home
     sparrow(SPARROW_HOME)
 
-    Extractor()
-    # 查询版本号, 查找配置文件
-    if args.version:
-        print(sparrow.version)
-        return
+
+def set_logging_level(args):
     if args.verbose:
         log_level = logging.DEBUG
     else:
@@ -118,11 +123,11 @@ def parse_args():
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level=log_level)
     formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
-
     console_handler.setFormatter(formatter)
     logging.basicConfig(level=log_level, handlers=[console_handler])
 
-    logging.info("sparrow %s will start", sparrow.version)
+
+def execute_subcommand(args):
     if args.subcommand == "query":
         if args.query_subcommands == "run":
             query_run(args)
@@ -133,9 +138,10 @@ def parse_args():
         if args.rebuild_subcommands == "lib":
             rebuild_lib(args)
     else:
-        logging.warning("please give conf to start sparrow, it will not start")
-    return
+        logging.warning("Sparrow requires a configuration to start. Please provide the necessary configuration to proceed.")
+
+
 
 
 if __name__ == '__main__':
-    parse_args()
+    parse_args_and_run()
